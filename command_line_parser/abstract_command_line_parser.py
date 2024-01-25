@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 """
 Abstract class representing a command-line parser
 This class is part of a simplified Factory design pattern

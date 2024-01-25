@@ -2,6 +2,11 @@ import os
 
 from command_line_parser import abstract_command_line_parser
 
+"""
+This class represents a sample command-line parser
+It is part of a simplified Factory design pattern
+"""
+
 class SampleCommandLineParser(abstract_command_line_parser.AbstractCommandLineParser):
     @staticmethod
     def process_command_line_args(args: list[str]) -> tuple[str, int]:
