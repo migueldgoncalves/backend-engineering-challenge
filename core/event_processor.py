@@ -9,12 +9,18 @@ from input_reader import sample_input_reader
 from utils import constants
 
 """
-This class processes incoming translation events arriving from the Input Reader package, and forwards the crunched information 
+This class processes incoming translation events arriving from the Input Reader package, and forwards the processed information 
     to the Output Generator package
 All business logic related to translation event processing should be added here
 """
 
 class EventProcessor:
+    CHRONOLOGY_DATE_KEY = 'date'
+    CHRONOLOGY_NUMBER_OF_EVENTS_KEY = 'number_of_events'
+    CHRONOLOGY_TOTAL_DELIVERY_TIME_KEY = 'total_delivery_time'
+
+    # Max digits of outputted translation delivery times. This allows to increase clarity by reducing the number of displayed digits. This number was not provided by Unbabel, instead it is defined here
+    AVERAGE_DELIVERY_TIME_MAX_DIGITS = 3
 
     @staticmethod
     def start(args: list[str]) -> None:
@@ -22,7 +28,7 @@ class EventProcessor:
         Main routine to invoke
         Incoming command-line args are processed, to extract the input file path and the window size in minutes
         The Input Reader and the Output Generator are then started in dedicated threads
-        Then, this class processes incoming translation events, forwarding the crunched data, until receiving an indication that
+        Then, this class processes incoming translation events, forwarding the processed information, until receiving an indication that
             there are no more events to process
         :param args: The command-line args as received by this application
         :return:
@@ -45,6 +51,108 @@ class EventProcessor:
         exit(0)  # Success
 
     @staticmethod
+    def event_processor(incoming_queue: queue.Queue, outgoing_queue: queue.Queue, window_size: int) -> None:
+        """
+        Major routine - Processes translation events, generating and forwarding the aggregated output for each minute of information
+            Exits when receiving a marker stating that all translation events have been read
+        This is the core of the application - It calculates, for every minute, a moving average of the translation delivery time for the last window_size minutes
+        :param incoming_queue: The queue from which raw translation events should be read
+        :param outgoing_queue: The queue in which generated pieces of information should be put
+        :param window_size: Requested window size, in minutes. For each minute, the previous window_size minutes will be analysed
+        :return:
+        """
+        def on_first_event(current_chronology: list[dict[str, Union[datetime, int]]], next_minute: datetime, delivery_time: int):
+            # First minute to add to chronology is the full minute before the creation of the first translation event
+            timestamp_previous_minute: datetime = next_minute - timedelta(minutes=1)  # Ex: 12:33:00 -> 12:32:00, for a first event created at 12:32:05
+
+            minute_info: dict[str, Union[datetime, int]] = {
+                EventProcessor.CHRONOLOGY_DATE_KEY: timestamp_previous_minute,
+                EventProcessor.CHRONOLOGY_NUMBER_OF_EVENTS_KEY: 0,
+                EventProcessor.CHRONOLOGY_TOTAL_DELIVERY_TIME_KEY: 0
+            }
+            current_chronology.insert(0, minute_info)
+
+            # Now the current minute for the incoming event can be added
+            minute_info: dict[str, Union[datetime, int]] = {
+                EventProcessor.CHRONOLOGY_DATE_KEY: next_minute,
+                EventProcessor.CHRONOLOGY_NUMBER_OF_EVENTS_KEY: 1,
+                EventProcessor.CHRONOLOGY_TOTAL_DELIVERY_TIME_KEY: delivery_time
+            }
+            current_chronology.insert(0, minute_info)  # Chronology order is from latest to earliest minute
+
+        # Stores the information regarding the incoming translation events, from latest to earliest minute
+        # The provided window size, in minutes, determines how long this chronology is. Ex: A window size of 10 will lead to a max size of 11 (eleven) elements in the list
+        # Each element has the information for one full minute. They will have the following format:
+        #   {'date': datetime.datetime(2020, 1, 2, 13, 24), 'number_of_events': 232, 'total_delivery_time': 4561}
+        # The current minute is always the first entry of the list. Once an event is received for another minute (leveraging on the
+        #   assumption that all events arrive in chronological order, from first to last), the new minute is inserted at the front of the list
+        # Empty minutes are inserted as needed, if no events appear for them (ex: if one event arrives 10 minutes after the previous event)
+        # Older elements that are no longer needed should be removed manually
+        chronology: list[dict[str, Union[datetime, int]]] = []
+
+        while True:
+            raw_event: str = EventProcessor._get_translation_event_from_incoming_queue(incoming_queue)
+            if raw_event == constants.END_OF_FILE_MARKER:  # All translation events have been read
+                break
+
+            event_timestamp, event_delivery_time = EventProcessor._get_parameters_from_raw_translation_event(raw_event)
+
+            # The minute that will be associated with this event - The event timestamp, rounded to the next minute
+            # No overlaps are allowed - An event always belongs to one and only one minute
+            # Ex: datetime.datetime(2020, 1, 2, 13, 23, 59, 999999) -> datetime.datetime(2020, 1, 2, 13, 24)
+            # Ex: datetime.datetime(2020, 1, 2, 13, 24, 00, 0) -> datetime.datetime(2020, 1, 2, 13, 24) - Edge case, associated minute will be an exact copy of the event timestamp
+            # Ex: datetime.datetime(2020, 1, 2, 13, 24, 00, 1) -> datetime.datetime(2020, 1, 2, 13, 25)
+            timestamp_next_minute: datetime = EventProcessor._get_next_minute_of_datetime(event_timestamp)
+
+            # How should the new incoming event be processed?
+            # 4 possible scenarios:
+            #   - Event is the first in the input file
+            #   - Event belongs to the same minute as other previous event(s)
+            #       - Ex: timestamp of incoming event is 12:34:56, and timestamp of previous event is 12:34:01
+            #   - Event is the first to be created in its minute AND previous event was created in the previous minute
+            #       - Ex: incoming event was created at 12:34:56, and previous event was created at 12:33:56
+            #   - Event is the first to be created in its minute AND previous event was created before the previous minute
+            #       - At least a full minute (ex: 12:33:00 -> 12:34:00) has passed between the creation of the two events
+            #       - Ex: incoming event was created at 12:34:56, and previous event was created at 12:32:56
+            #           - In this case, minute 12:34:00 has no associated events
+
+            if not chronology:  # Event is the first in the input file
+                on_first_event(chronology, timestamp_next_minute, event_delivery_time)
+
+        # All translation events have been read
+        EventProcessor._notify_end_of_information(outgoing_queue)
+        return
+
+    @staticmethod
+    def _get_average_delivery_time_from_chronology(chronology: list[dict[str, Union[datetime, int]]], window_size: int) -> float:
+        """
+        Given the chronology object with the processed information regarding incoming events, and the desired window size,
+            returns the average translation delivery time for the last window_size minutes
+        Time interval is [latest full minute in chronology - 9:59.999999; latest full minute in chronology]
+        :param chronology: The chronology maintained by the event_processor() routine of this class. Full description available at the routine docstring. It is assumed that it has no gaps, that is, that it has all minutes between start and end
+        :param window_size: Requested window size, in minutes. This value determines how many minutes of information will be analysed
+        :return: The average delivery time of all translations in the past window_size minutes
+        """
+        def _get_average_delivery_time(number_of_events: int, delivery_time: int) -> float:
+            return delivery_time / number_of_events
+
+        if not chronology:
+            return 0  # Nothing to analyse
+
+        total_number_of_events: int = 0
+        total_delivery_time: int = 0
+
+        for i in range(window_size):
+            if i >= len(chronology) - 1:  # Oldest entry in chronology is always an "empty" minute, i.e. the full minute before the first translation event
+                return _get_average_delivery_time(total_number_of_events, total_delivery_time)  # All information has been processed - Average delivery time can be computed and returned
+
+            minute_number_of_events: int = chronology[i].get(EventProcessor.CHRONOLOGY_NUMBER_OF_EVENTS_KEY, 0)
+            minute_delivery_time: int = chronology[i].get(EventProcessor.CHRONOLOGY_TOTAL_DELIVERY_TIME_KEY, 0)
+
+            total_number_of_events += minute_number_of_events
+            total_delivery_time += minute_delivery_time
+
+    @staticmethod
     def _get_parameters_from_raw_translation_event(raw_translation_event: str) -> tuple[datetime, int]:
         """
         Given a raw translation event (full example can be found in SampleInputReader class), returns the relevant parameters
@@ -60,9 +168,9 @@ class EventProcessor:
         delivery_time_key = 'duration'  # Translation delivery time in ms
 
         event_timestamp: datetime = datetime.fromisoformat(translation_event_dict.get(timestamp_key))
-        delivery_time: int = translation_event_dict.get(delivery_time_key)
+        event_delivery_time: int = translation_event_dict.get(delivery_time_key)
 
-        return event_timestamp, delivery_time
+        return event_timestamp, event_delivery_time
 
     @staticmethod
     def _get_next_minute_of_datetime(datetime_object: datetime) -> datetime:
@@ -103,8 +211,10 @@ class EventProcessor:
 
         date_string = str(datetime_object)  # datetime.datetime(2020, 1, 2, 13, 24) -> '2020-01-02 13:24:00'. Output example provided by Unbabel excludes microseconds, so the same is done here
         # Average delivery time must be presented as 45 and not as 45.0 if it is an integer. Fractional numbers (ex: 45.5) must be presented as they are, without rounding
-        if EventProcessor._is_integer(average_delivery_time):
+        if EventProcessor._is_integer(average_delivery_time):  # Ex: 45.0
             average_delivery_time = int(average_delivery_time)  # Ex: 45.0 -> 45
+        else:  # Ex: 45.5
+            average_delivery_time = round(average_delivery_time, EventProcessor.AVERAGE_DELIVERY_TIME_MAX_DIGITS)  # Increases clarity. Ex: 45.55555555 -> 45.555
 
         information: dict[str, Union[str, int]] = {date_field: date_string, average_delivery_time_field: average_delivery_time}
         information_string: str = json.dumps(information)
