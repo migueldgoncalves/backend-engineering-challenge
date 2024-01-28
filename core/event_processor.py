@@ -27,9 +27,42 @@ class EventProcessor:
         :param args: The command-line args as received by this application
         :return:
         """
+        # Gets startup parameters
         command_line_parser = sample_command_line_parser.SampleCommandLineParser()
         input_file_path, window_size = command_line_parser.process_command_line_args(args)  # Fast operation - Can be synchronous
 
+        # Creates the requires queues
+        incoming_queue = queue.Queue()
+        outgoing_queue = queue.Queue()
+
+        # Initializes the Input Reader and Output Generator threads
+        # These will terminate on their own when all translation events have been processed
+        input_reader = sample_input_reader.SampleInputReader()
+        threading.Thread(target=input_reader.process_input_stream, args=(incoming_queue, input_file_path)).start()
+
+        # Starts processing events - When the routine exits, all translation events have been processed and the main thread may exit
+        EventProcessor.event_processor(incoming_queue, outgoing_queue, window_size)
+        exit(0)  # Success
+
+    @staticmethod
+    def _get_parameters_from_raw_translation_event(raw_translation_event: str) -> tuple[datetime, int]:
+        """
+        Given a raw translation event (full example can be found in SampleInputReader class), returns the relevant parameters
+        :param raw_translation_event: The raw translation event. A single type of event is expected: translation_delivered
+        :return: The event timestamp as a datetime object, and the duration/delivery time in ms as an integer
+        """
+        # It is assumed that:
+        #   1 - Provided raw translations events are correct (i.e. not empty, all expected fields are present, correct values)
+        #   2 - There is a single event type: translation_delivered
+
+        translation_event_dict: dict[str, Union[str, int]] = json.loads(raw_translation_event)
+        timestamp_key = 'timestamp'  # Event timestamp, in ISO format. Can be read by Python datetime library. Ex: "2018-12-26 18:12:19.903159"
+        delivery_time_key = 'duration'  # Translation delivery time in ms
+
+        event_timestamp: datetime = datetime.fromisoformat(translation_event_dict.get(timestamp_key))
+        delivery_time: int = translation_event_dict.get(delivery_time_key)
+
+        return event_timestamp, delivery_time
 
     @staticmethod
     def _get_next_minute_of_datetime(datetime_object: datetime) -> datetime:
