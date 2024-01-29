@@ -1,7 +1,7 @@
 # Translation Event Processor
 ### Unbabel Backend Engineering Challenge January 2024
 
-The original repository from Unbabel with the challenge instructions can be found [here](https://github.com/Unbabel/backend-engineering-challenge). It was forked on the January 24th, 2024.
+The original repository from Unbabel with the challenge instructions can be found [here](https://github.com/Unbabel/backend-engineering-challenge). It was forked on January 24th, 2024.
 
 Developed and tested in Python 3.9, on Windows 10.
 
