@@ -11,6 +11,8 @@ Developed and tested in Python 3.9, on Windows 10.
 
 Before running the application, the input file must be created. It can be placed in an arbitrary location inside the filesystem, with an arbitrary name.
 
+Placing the file in the root folder of the application allows to provide the filename rather than the absolute path in the startup command of the application.
+
 #### Output file
 
 The output file will be named ``output.txt``, and it will appear in the current directory when the application is launched.
@@ -30,7 +32,7 @@ Where:
 - ``C:\Users\Username\AppData\Local\Programs\Python\Python39\python.exe`` is the absolute path of the Python executable. Windows 10 seems to require the full path to the Python executable.
 - ``translation_event_processor.py`` is the name of the Python module to execute. If running the application inside its root folder, only the filename is required, and not its absolute path
 - ``--input-file`` is the name of the flag with the input filename. It is not used by the application, it just needs to be a non-empty string
-- ``events.json`` is the name of the input file. If running the application inside its root folder, only the filename is required, and not its absolute path
+- ``events.json`` is the name of the input file. If running the application inside its root folder and if the file is also inside the folder, only the filename is required, and not its absolute path
 - ``--window-size`` is the name of the flag with the desired window size. It is not used by the application, it just needs to be a non-empty string
 - ``10`` is the desired window size in minutes. This parameter will have a direct impact in the output produced
 
