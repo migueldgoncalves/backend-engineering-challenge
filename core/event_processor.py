@@ -6,6 +6,7 @@ import threading
 
 from command_line_parser import sample_command_line_parser
 from input_reader import sample_input_reader
+from output_generator import sample_output_generator
 from utils import constants
 
 """
@@ -44,7 +45,9 @@ class EventProcessor:
         # Initializes the Input Reader and Output Generator threads
         # These will terminate on their own when all translation events have been processed
         input_reader = sample_input_reader.SampleInputReader()
+        output_generator = sample_output_generator.SampleOutputGenerator()
         threading.Thread(target=input_reader.process_input_stream, args=(incoming_queue, input_file_path)).start()
+        threading.Thread(target=output_generator.process_incoming_information, args=(outgoing_queue,)).start()
 
         # Starts processing events - When the routine exits, all translation events have been processed and the main thread may exit
         EventProcessor.event_processor(incoming_queue, outgoing_queue, window_size)

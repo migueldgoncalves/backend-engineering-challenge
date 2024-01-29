@@ -19,31 +19,36 @@ class SampleInputReader(abstract_input_reader.AbstractInputReader):
         :param input_file_path: The path of the file to analyse. It is assumed that this path has been validated elsewhere
         :return:
         """
-        mode = 'r'  # The goal is to read from the file while keeping it intact. There is nothing to execute inside it
-        with open(input_file_path, mode) as f:
+        try:
+            mode = 'r'  # The goal is to read from the file while keeping it intact. There is nothing to execute inside it
+            with open(input_file_path, mode) as f:
 
-            # It is assumed that each line contains a JSON representing a translation event, and only that JSON
-            #   That is, the file itself does not contain a single JSON, but one JSON per line
-            # It is also assumed that all events arrive by chronological order, from oldest to newest
-            # Ex: {
-            #       "timestamp": "2018-12-26 18:11:08.509654",
-            #       "translation_id": "5aa5b2f39f7254a75aa5",
-            #       "source_language": "en",
-            #       "target_language": "fr",
-            #       "client_name": "airliberty",
-            #       "event_name": "translation_delivered",
-            #       "nr_words": 30,
-            #       "duration": 20
-            #     }
+                # It is assumed that each line contains a JSON representing a translation event, and only that JSON
+                #   That is, the file itself does not contain a single JSON, but one JSON per line
+                # It is also assumed that all events arrive by chronological order, from oldest to newest
+                # Ex: {
+                #       "timestamp": "2018-12-26 18:11:08.509654",
+                #       "translation_id": "5aa5b2f39f7254a75aa5",
+                #       "source_language": "en",
+                #       "target_language": "fr",
+                #       "client_name": "airliberty",
+                #       "event_name": "translation_delivered",
+                #       "nr_words": 30,
+                #       "duration": 20
+                #     }
 
-            # Keep reading from the input file until the end
-            while True:
-                translation_event: str = f.readline()
-                if not translation_event:  # No empty lines are expected. If translation_event is '', EOF has been reached
-                    SampleInputReader._notify_all_events_read(outgoing_queue)
-                    return  # Nothing else to do
-                else:  # There is a new translation event to report
-                    SampleInputReader._notify_new_event(outgoing_queue, SampleInputReader._parse_event(translation_event))
+                # Keep reading from the input file until the end
+                while True:
+                    translation_event: str = f.readline()
+                    if not translation_event:  # No empty lines are expected. If translation_event is '', EOF has been reached
+                        SampleInputReader._notify_all_events_read(outgoing_queue)
+                        return  # Nothing else to do
+                    else:  # There is a new translation event to report
+                        SampleInputReader._notify_new_event(outgoing_queue, SampleInputReader._parse_event(translation_event))
+
+        except:
+            print("An error has occurred while reading translation events from the output file. Input Reader will exit")
+            return
 
     @staticmethod
     def _notify_new_event(outgoing_queue: queue.Queue, new_event: str) -> None:

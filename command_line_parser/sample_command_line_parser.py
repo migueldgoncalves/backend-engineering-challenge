@@ -27,7 +27,8 @@ class SampleCommandLineParser(abstract_command_line_parser.AbstractCommandLinePa
         if len(args) < expected_args_number:
             raise Exception("Not enough args provided")
 
-        base_path = os.path.split(args[script_path_index])[0]  # The script that starts this application is in the root folder. Ex: "D:\PycharmProjects\translation-event-processor\translation_event_processor.py"
+        # The script that starts this application is in the root folder. Ex: "D:\PycharmProjects\translation-event-processor\translation_event_processor.py" -> "D:\PycharmProjects\translation-event-processor"
+        base_path = os.path.split(args[script_path_index])[0]
 
         # Has the path for the input file been provided?
         input_file_path: str = args[input_file_path_index]
