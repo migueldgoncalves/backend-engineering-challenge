@@ -121,7 +121,7 @@ class EventProcessor:
             # Ex: If current event occurred at 12:34:56 and incoming event occurred at 12:36:56, minute 12:36:00 (12:35:00.000001 -> 12:36:00) is empty
 
             minute_difference_timedelta: timedelta = next_minute - current_minute  # Ex: 12:37:00 - 12:35:00 = 00:02:00
-            minute_difference: int = minute_difference_timedelta.seconds // 60  # timedelta objects allow to get seconds, from which minutes can be deducted
+            minute_difference: int = minute_difference_timedelta.seconds // 60 + minute_difference_timedelta.days * 365 * 24 * 60 * 60  # timedelta objects allow to get seconds and days, from which minutes can be deducted
 
             for i in range(1, minute_difference):  # A difference of X minutes leads to X-1 empty minutes (in the example above, 2 minutes of difference leads to 1 empty minute)
                 # Adds a new empty minute in the chronology as the current minute
@@ -220,6 +220,8 @@ class EventProcessor:
         :return: The average delivery time of all translations in the past window_size minutes
         """
         def _get_average_delivery_time(number_of_events: int, delivery_time: int) -> float:
+            if number_of_events == 0 or delivery_time == 0:
+                return 0  # Nothing to calculate
             return delivery_time / number_of_events
 
         if not chronology:
