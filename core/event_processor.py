@@ -51,7 +51,7 @@ class EventProcessor:
 
         # Starts processing events - When the routine exits, all translation events have been processed and the main thread may exit
         EventProcessor.event_processor(incoming_queue, outgoing_queue, window_size)
-        exit(0)  # Success
+        return
 
     @staticmethod
     def event_processor(incoming_queue: queue.Queue, outgoing_queue: queue.Queue, window_size: int) -> None:
