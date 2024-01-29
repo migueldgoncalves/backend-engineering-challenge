@@ -38,6 +38,8 @@ Where:
 
 Execution is expected to take less than 1 s, with no further need for input from the user.
 
+It is possible to execute the application several times in a row without the need to manually delete the ``output.txt`` file, as the application does this automatically.
+
 #### Automated unit testing
 
 A unit test was added, ensuring that the sample input provided by Unbabel leads to the expected output.
